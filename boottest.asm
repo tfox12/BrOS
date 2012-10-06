@@ -1,4 +1,5 @@
 org 0x7c00
+
 ;--------------------------------------------------;
 ; Set print information
 ;--------------------------------------------------;
@@ -8,43 +9,81 @@ mov ah, 0xff
 
 call clear_screen
 
-mov bx, 0
+mov DWORD [cursor], 0
 mov ax, 0x1120
-call print_char_to_location
+call print_char_to_cursor
 
 jmp $
 
 ;--------------------------------------------------;
 ; print_char_to_location
 ; IN:   
-;   bl -> x_position
-;   bh -> y_position
-;   ax -> what to print
+;   ah -> Forground and Bacground Color
+;   al -> ascii character to print
 ;--------------------------------------------------;    
-print_char_to_location:
+print_char_to_cursor:
 
+    ; registers used must be stored before hand
     push ax
     push bx
+    push cx
+    push di
 
-    mov cx, ax
+    mov bx, [cursor]                ; load cursor position
+    mov cx, ax                      ; save ax
 
-    movzx ax, bh
+    ; calculate offset to write character
+    movzx ax, bh    
     mov dx, 160 
     mul dx
     movzx bx, bl
     shl bx, 1
 
+    ; put the offset into di
     mov di, 0
     add di, ax
     add di, bx
 
+    ; write the character
     mov ax, cx
     stosw
 
+    ; restore register state
+    pop di
+    pop cx
     pop bx
     pop ax
 
-    ret
+ret
+
+
+;--------------------------------------------------;    
+; advance_cursor
+;   Will either move the cursor to the right 1,
+;   or will move the the start of the next line
+;--------------------------------------------------;
+advance_cursor:
+
+    ; save the state of the used registers
+    push ax
+
+    mov ax, [cursor]                ; load the cursor into ax
+    cmp al, 79                      ; is the cursor on the 79th col
+    je advance_cursor_next_line     ; if so we want to go to the next line
+    add al, 1                       ; otherwise we up the column
+    jmp advance_cursor_exit
+
+advance_cursor_next_line:
+    xor al, al                      ; reset column to 0
+    add ah, 1                       ; increment the row
+
+advance_cursor_exit:
+    mov [cursor], ax                ; save the position
+
+    ; revert back to previous state
+    pop ax
+
+ret
 
 ;--------------------------------------------------;    
 ; clear_screen
@@ -53,27 +92,23 @@ print_char_to_location:
 ;--------------------------------------------------;    
 clear_screen:
     
-    mov al, 0x20
+    mov ah, [background_color]      ; set the clear color
+    mov al, 0x20                    ; the space character
+    mov DWORD [cursor], 0            ; set the cursor to 0,0
+    mov cx, 2000                    ; we wanna run 2000 times
 
-    mov bh, 0
-    y_clear:
-        cmp bh, 25
-        je y_end
+clear_screen_loop:
+    call print_char_to_cursor
+    call advance_cursor
+    loop clear_screen_loop
 
-        mov bl, 0
-        x_clear:
-            cmp bl, 80
-            je x_end
-            call print_char_to_location
-            add bl, 1
-            jmp x_clear
-        x_end:
+ret
 
-        add bh, 1
-        jmp y_clear
-    y_end:
-
-    ret
+;-------------------------------------------------;
+; System Variables
+;-------------------------------------------------;
+cursor dw 0
+background_color db 0xff
 
 times 510-($-$$) db 0
 
